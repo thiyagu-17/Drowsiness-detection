@@ -1,0 +1,160 @@
+import numpy as np
+import pandas as pd
+import PIL
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout, Flatten, Conv2D, MaxPooling2D
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.optimizers import Adam
+
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+data_dir = "../input/drowsiness-detection/"
+train_datagen = ImageDataGenerator(validation_split=0.2)
+
+train_generator = train_datagen.flow_from_directory( data_dir,
+                                                     target_size=(32,32),
+                                                     batch_size=32,
+                                                     shuffle=True,
+                                                     class_mode='categorical',
+                                                     subset='training')
+
+validation_datagen = ImageDataGenerator(validation_split=0.2)
+
+validation_generator =  validation_datagen.flow_from_directory( data_dir,
+                                                                target_size=(32,32),
+                                                                batch_size=32,
+                                                                class_mode='categorical',
+                                                                subset='validation')   
+
+cnn_model = Sequential([
+    Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(32,32,3)),
+    MaxPooling2D(pool_size=(1,1)),
+    Conv2D(32,(3,3),activation='relu'),
+    MaxPooling2D(pool_size=(1,1)),
+    Conv2D(64, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(1,1)),
+
+    Dropout(0.25),
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dense(2, activation='softmax')
+])
+
+cnn_model.compile(optimizer='adam',loss='categorical_crossentropy',metrics=[tf.keras.metrics.CategoricalAccuracy(),tf.keras.metrics.Precision(), tf.keras.metrics.Recall()])
+cnn_model.summary()
+history = cnn_model.fit(train_generator, validation_data=validation_generator, epochs=10)
+fig1 = plt.gcf()
+plt.plot(history.history['categorical_accuracy'])
+plt.plot(history.history['val_categorical_accuracy'])
+plt.axis(ymin=0.4,ymax=1)
+plt.grid()
+plt.title('Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epochs')
+plt.legend(['train', 'validation'])
+plt.show()
+
+
+import cv2
+img_height, img_width = 32,32
+image=cv2.imread("../input/drowsiness-detection/closed_eye/s0001_00001_0_0_0_0_0_01.png")
+image_resized= cv2.resize(image, (img_height,img_width))
+image=np.expand_dims(image_resized,axis=0)
+print(image.shape)
+r_eye = cv2.cvtColor(image,cv2.COLOR_BGR2RGB)
+print(r_eye.shape)
+r_eye = cv2.resize(r_eye, (img_height,img_width))
+print(r_eye.shape)
+#r_eye= r_eye/255
+r_eye=  r_eye.reshape((-1, 32, 32, 3))
+print(r_eye.shape)
+#r_eye = np.expand_dims(r_eye,axis=0)
+pred=cnn_model.predict(r_eye)
+
+np.argmax(pred)
+image=np.expand_dims(image_resized,axis=0)
+pred=cnn_model.predict(image)
+
+output_class=np.argmax(pred)
+print("The predicted class is", output_class)
+cnn_model.save("./cnn.h5")
+
+from keras.models import load_model
+test_model = load_model('./cnn.h5')
+pred = np.argmax(test_model.predict(image), axis=-1)
+print(pred)
+
+resnet50_model = Sequential()
+
+pretrained_model= tf.keras.applications.ResNet50(include_top=False,
+                   input_shape=(32,32,3),
+                   pooling='avg',classes=2,
+                   weights= 'imagenet')
+for layer in pretrained_model.layers:
+        layer.trainable=False
+
+resnet50_model.add(pretrained_model)
+resnet50_model.add(Flatten())
+resnet50_model.add(Dense(128, activation='relu'))
+resnet50_model.add(Dense(2, activation='softmax'))
+resnet50_model.compile(optimizer=Adam(learning_rate=0.001),loss='categorical_crossentropy',metrics=[tf.keras.metrics.CategoricalAccuracy(),tf.keras.metrics.Precision(), tf.keras.metrics.Recall()])
+history = resnet50_model.fit(train_generator, validation_data=validation_generator, epochs=10)
+
+resnet50_model.save("./resnet50.h5")
+
+resnet50_model_regularized = Sequential()
+
+pretrained_model= tf.keras.applications.ResNet50(include_top=False,
+                   input_shape=(32,32,3),
+                   pooling='avg',classes=2,
+                   weights= 'imagenet')
+for layer in pretrained_model.layers:
+        layer.trainable=False
+
+resnet50_model_regularized.add(pretrained_model)
+
+resnet50_model_regularized.add(Flatten())
+resnet50_model_regularized.add(Dense(128, activation='relu'))
+resnet50_model_regularized.add(Dropout(0.5))
+resnet50_model_regularized.add(Dense(2, activation='softmax'))
+resnet50_model_regularized.compile(optimizer=Adam(learning_rate=0.001),loss='categorical_crossentropy',metrics=[tf.keras.metrics.CategoricalAccuracy(),tf.keras.metrics.Precision(), tf.keras.metrics.Recall()])
+history = resnet50_model_regularized.fit(train_generator, validation_data=validation_generator, epochs=10)
+
+fig1 = plt.gcf()
+plt.plot(history.history['categorical_accuracy'])
+plt.plot(history.history['val_categorical_accuracy'])
+plt.axis(ymin=0.4,ymax=1)
+plt.grid()
+plt.title('Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epochs')
+plt.legend(['train', 'validation'])
+plt.show()
+resnet50_model_regularized.save("./resnet50_model_regularized.h5")
+resnet50_fine_tune1 = Sequential()
+
+pretrained_model= tf.keras.applications.ResNet50(include_top=False,
+                   input_shape=(32,32,3),
+                   pooling='avg',classes=2,
+                   weights= 'imagenet')
+for layer in pretrained_model.layers:
+        layer.trainable=True
+
+resnet50_fine_tune.add(pretrained_model)
+resnet50_fine_tune1.add(Flatten())
+resnet50_fine_tune1.add(Dense(128, activation='relu'))
+resnet50_fine_tune1.add(Dropout(0.5))
+resnet50_fine_tune1.add(Dense(2, activation='softmax'))
+resnet50_fine_tune1.compile(optimizer=Adam(learning_rate=0.001),loss='categorical_crossentropy',metrics=[tf.keras.metrics.CategoricalAccuracy(),tf.keras.metrics.Precision(), tf.keras.metrics.Recall()])
+history = resnet50_fine_tune1.fit(train_generator, validation_data=validation_generator, epochs=10)
+fig1 = plt.gcf()
+plt.plot(history.history['categorical_accuracy'])
+plt.plot(history.history['val_categorical_accuracy'])
+plt.axis(ymin=0.4,ymax=1)
+plt.grid()
+plt.title('Model Accuracy')
+plt.ylabel('Accuracy')
+plt.xlabel('Epochs')
+plt.legend(['train', 'validation'])
+plt.show()
+resnet50_fine_tune.save("./resnet50_fine_tune.h5")
